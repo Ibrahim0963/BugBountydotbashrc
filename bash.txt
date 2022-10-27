@@ -1,0 +1,250 @@
+
+# My Aliases
+alias paramspider="python3 /root/Desktop/tools/ParamSpider/paramspider.py"
+alias linkfinder="python3 /root/Desktop/tools/linkfinder/linkfinder.py"
+
+
+# Golang vars
+export GOROOT=/usr/local/go
+export GOPATH=$HOME/go
+export PATH=$GOPATH/bin:$GOROOT/bin:$HOME/.local/bin:$PATH
+
+
+# Nuclei
+mynuclei(){
+echo "mynuclei subdomains.txt outputname"
+if [ $# != 2 ]; then
+	echo "No arguments provided - hosts.txt output.txt"
+else
+	nuclei -l $1 -o $2  # there is also time and -rl and templates and so on....
+fi
+}
+
+mynuclei_sqli(){
+	nuclei -l $1 -t ~/Desktop/custom-templates/error-based-sql-injection.yaml -timeout 2 -rl 200
+}
+
+myparamspider_sqli(){
+	python3 ~/Desktop/tools/ParamSpider/paramspider.py --domain $1 --level high | nuclei -t sqli.yaml | tee -a $1.sqli
+}
+
+mynuclei_testing(){
+	nuclei -t ~/Desktop/nuclei-templates/exposures -t ~/Desktop/nuclei-templates/misconfiguration -t ~/Desktop/nuclei-templates/cves -l $1 -o mynuclei_testing.out
+}
+
+mynuclei_testing_one(){
+	nuclei -t ~/Desktop/nuclei-templates/exposures -t ~/Desktop/nuclei-templates/misconfiguration -t ~/Desktop/nuclei-templates/cves -u $1 
+}
+
+# Gather Parameters
+myparams_one() {
+	python3 ~/Desktop/tools/ParamSpider/paramspider.py -d $1 -o $2
+}
+
+myparams(){
+	echo "paramspider started...."
+	cat $1 | xargs -n 1 -I {} python3 ~/Desktop/tools/ParamSpider/paramspider.py --domain {} | urldedupe >> spiderparamters.txt
+	echo "github-endpoints started...."
+}
+
+
+# Salesforce testing
+mysalesforce_discover(){
+	nuclei -t ~/Desktop/custom-templates/salesforce-aura.yaml -l $1
+}
+
+mysalesforce(){
+	cat $1 | xargs -n1 -I {} cirrusgo salesforce -u {} -gobj | tee $1_saas.txt
+}
+
+mysalesforce_one(){
+	cirrusgo salesforce -u $1 -gobj 
+}
+
+# Screenshots
+myscreenshot(){
+	eyewitness -f $1 -d screenshots --web
+}
+
+
+mygxss(){
+cat $1 | Gxss -o $2
+}
+
+# SSRF Testing
+myssrf_ffuf(){ # $1 -> parameters, $2 -> burp collaborator
+cat $1 | qsreplace $2 > parameters.ssrf && ffuf -c -w parameters.ssrf -u FUZZ -t 200
+}
+myssrf_httpx(){ # $1 -> parameters, $2 -> burp collaborator
+cat $1 | qsreplace $2 | httpx
+}
+
+# Backup Discovery
+checkbackup(){
+ffuf -c -w $1 -u https://FUZZ/FUZZ.tar.gz -mc 200,204,401,403 -H "X-rewrite-url: 127.0.0.1" -H "X-Original-URL: 127.0.0.1" -H "X-Forwarded-For: 127.0.0.1" -timeout 2 -t 500 -o fuzz.results
+}
+
+# Subdomain takeover 
+mysubover(){
+temp=`pwd`;echo $temp;cd ~/Desktop/tools/SubOver/;./SubOver -l $temp/$1 -t 300 -https -timeout 2;cd $temp
+}
+
+mysubjack(){
+subjack -w $1 -t 300 -timeout 3 -ssl -c ~/Desktop/tools/subjack/fingerprints.json
+}
+
+
+mybypass(){
+if [ $# != 2 ]; then
+	echo "mybypass https://any.com api"
+else
+	bash ~/Desktop/tools/bypass-403/bypass-403.sh $1 $2
+fi
+}
+
+myjex(){
+if [ $# != 2 ]; then
+	echo "myjex subsdomains.txt outputname" 
+else
+	python ~/Desktop/tools/jexboss/jexboss.py -mode file-scan -file $1 -out $2.log
+fi
+}
+
+crtsh(){
+curl -s https://crt.sh/?q=%25.$1 > /tmp/curl.out
+cat /tmp/curl.out | grep $1 | grep TD | sed -e 's/<//g' | sed -e 's/>//g' | sed -e 's/TD//g' | sed -e 's/\///g' | sed -e 's/ //g' | sed -n '1!p' | sort -u > from-crtsh.txt
+}
+
+mysmuggler(){
+	cat $1 | python3 /root/Desktop/tools/smuggler/smuggler.py -t 2 -l output.smuggler
+}
+
+movego(){
+	bash ~/Desktop/move_go.sh
+}
+
+mydirsearch(){
+	dirsearch -u $1 -w ~/Desktop/wordlists/all.txt # options filtering for 200, 403 and threads
+}
+
+
+# sqlitime() {
+# for i in $(cat /root/Desktop/wordlist/sqli-time.txt);do cat $1 | qsreplace "$i" > sqli && ffuf -u FUZZ -w sqli -s -ft "<5000" | tee -a vulnSqli.txt && rm sqli;done 
+# }
+
+
+# Get subdomains
+mygetdomains(){
+
+# Gather Subdomains
+echo "Gathering Subdomains"
+subfinder -d $1 -all -silent -o from-subfinder.txt
+assetfinder -subs-only $1 > from-assetfinder.txt
+sublist3r -d $1 -o from-sublister.txt
+github-subdomains -d $1 -t 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 -o from-github-subdomains.txt
+knockpy --no-http $1 | tee -a from-knockpy.txt
+crtsh $1
+findomain -t $1 -o from-findomain.txt
+
+echo "Running anew"
+cat from-subfinder.txt| anew subdomains.txt
+cat from-assetfinder.txt| anew subdomains.txt
+cat from-sublister.txt| anew subdomains.txt
+cat from-findomain.txt| anew subdomains.txt
+cat from-crtsh.txt| anew subdomains.txt
+cat from-knockpy.txt | grep $1 | cut -d " " -f 5 | anew subdomains.txt
+cat from-github-subdomains.txt| anew subdomains.txt
+
+echo "Running httprobe"
+cat subdomains.txt |httprobe > httprobe.txt
+}
+
+# Get endpoints 
+mygetparams(){
+mkdir waybackurls-gau
+cd waybackurls-gau
+cat ../$1 | httpx -t 300 -o all.httpx
+cat all.httpx | waybackurls | uro > all.waybackurls
+cat all.httpx | gau | uro > all.gau
+cat all.waybackurls >> all.temporary
+cat all.gau >> all.temporary
+cat all.temporary | uro > all.waybackurls.gau
+cat all.waybackurls.gau | grep "=" | uro > all.parameters
+cat all.waybackurls.gau | grep -v "=" | uro > all.paths
+ls
+}
+
+mygetparams_one(){
+mkdir waybackurls-gau
+cd waybackurls-gau
+
+echo "gau + waybackurls starts to get endpoint and parameters"
+echo $1 > all.httpx
+cat all.httpx | waybackurls | uro > all.waybackurls
+cat all.httpx | gau | uro > all.gau
+cat all.httpx | hakcrawler -d | uro > all.hakrawler
+cat all.waybackurls >> all.temporary
+cat all.gau >> all.temporary
+cat all.hakrawler >> all.temporary
+cat all.temporary | uro > all.waybackurls.gau
+cat all.waybackurls.gau | grep "=" | uro > all.parameters
+cat all.waybackurls.gau | grep -v "=" | uro > all.paths
+
+echo "paramspider starts to get all JS files"
+
+echo " xx starts to get endpoints from JS file"
+
+echo "paramspider starts to get parameters"
+python3 /root/Desktop/tools/ParamSpider/paramspider.py -d $1 
+ls
+}
+
+# To get all urls from waybackurls, gau, github-endpoints
+# httpx -> waybackurls + gau + github-endpoints? -> paramspider -> anew -> url -> kxss + Gxss?
+mygeturls(){
+
+if [ $# != 1 ]; then
+	echo "mygeturls subdomains.txt"
+else
+	echo "Number of subdomains: "
+	cat $1 | wc -l
+	
+	echo "httpx started...."
+	cat $1 | httpx > httpx.txt
+	
+	echo "waybackurls stated...."
+	# cat httprobe.txt | waybackurls | urldedupe > waybackurls_urls.txt -> reason: waybackurls does not work with files 
+	cat httprobe.txt | xargs -n 1 -I {} waybackurls {} >>  waybackurls_urls_tempo.txt
+	cat waybackurls_urls_tempo.txt | urldedupe >> waybackurls_urls.txt
+	cat waybackurls_urls.txt | grep = | urldedupe >> waybackurls_parameters.txt
+	
+	echo "gau stated...."
+	cat httprobe.txt| gau | urldedupe > gau_urls.txt 
+	cat gau_urls.txt | grep = | urldedupe > gau_parameters.txt
+	
+	echo "SpiderParameters started...."
+	cat httprobe.txt | xargs -n 1 -I {} python3 ~/Desktop/tools/ParamSpider/paramspider.py --domain {} --level high | urldedupe >> all_spiderparamters.txt
+	
+	# echo "github-endpoints started...."
+	# cat httprobe.txt | xargs -n 1 -I {} github-endpoints -d {} >> all_githube_endpoints.txt
+	
+	echo "anew started...."
+	cat waybackurls_urls.txt | anew gau_urls.txt
+	cat waybackurls_parameters.txt | anew gau_parameters.txt
+	
+	echo "urldedupe started...."
+	cat gau_urls.txt | urldedupe > gau_urlsFiltered.txt
+	cat gau_parameters.txt | urldedupe > gau_parametersFitered.txt
+	cat all_spiderparamters.txt | urldedupe > all_spiderparamsFiltered.txt
+	
+	echo "kxss started...."
+	cat all_spiderparamsFiltered.txt | kxss > kxss.txt
+	
+	echo "clean the order...."
+	mkdir backup
+	mv waybackurls_urls.txt waybackurls_parameters.txt gau_urls.txt gau_parameters.txt all_spiderparamters.txt backup
+fi
+
+}
+
+

@@ -8,7 +8,7 @@ wget https://raw.githubusercontent.com/Ibrahim0963/BugBountyBashProfile/main/bas
 cat bash.txt >> ~/.bashrc
 ```
 
-### to install most common tools for finding bugs
+### To Install The Most Common Tools For Finding Bugs
 ```
 wget https://raw.githubusercontent.com/Ibrahim0963/BugBountyBashProfile/main/bb_tools.sh
 bash bb_tools.sh
